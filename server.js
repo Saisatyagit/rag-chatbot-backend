@@ -7,7 +7,6 @@ const helmet = require("helmet");
 const compression = require("compression");
 const http = require("http");
 const { Server } = require("socket.io");
-const path = require("path");
 
 // Redis setup
 const redis = require("redis");
@@ -17,19 +16,24 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
+// ✅ Use environment variable for frontend URL
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+
 // Socket.IO setup
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || "*",
+    origin: FRONTEND_URL,
     methods: ["GET", "POST"]
   }
 });
 
 // Middlewares
-app.use(cors({
-  origin: "*",
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: FRONTEND_URL,
+    credentials: true
+  })
+);
 app.use(express.json({ limit: "10mb" }));
 app.use(morgan("dev"));
 app.use(helmet());
@@ -39,9 +43,10 @@ app.use(compression());
 const redisClient = redis.createClient({
   url: process.env.REDIS_URL || "redis://localhost:6379"
 });
-redisClient.connect()
+redisClient
+  .connect()
   .then(() => console.log("✅ Redis connected"))
-  .catch(err => console.error("Redis connection error:", err));
+  .catch((err) => console.error("Redis connection error:", err));
 
 // Health check
 app.get("/", (req, res) => {
@@ -55,13 +60,8 @@ const newsRoute = require("./routes/newsRoute");
 app.use("/api/chat", chatRoutes);
 app.use("/api/news", newsRoute);
 
-// Serve frontend (if deploying single repo)
-app.use(express.static(path.join(__dirname, "../frontend/build")));
-// Serve frontend for any unmatched route (after API routes)
-app.get(/.*/, (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/build", "index.html"));
-});
-
+// ⚠️ Removed static frontend serving
+// (since frontend is deployed in a separate repo on Vercel)
 
 // Socket.IO events
 io.on("connection", (socket) => {
@@ -71,7 +71,7 @@ io.on("connection", (socket) => {
   socket.on("get_history", async ({ sessionId }) => {
     try {
       const messages = await redisClient.lRange(sessionId, 0, -1);
-      const parsed = messages.map(m => JSON.parse(m));
+      const parsed = messages.map((m) => JSON.parse(m));
       socket.emit("chat_history", parsed);
     } catch (err) {
       console.error("Error fetching history:", err);
@@ -96,7 +96,6 @@ io.on("connection", (socket) => {
 
       socket.emit("receive_message", botMsg);
       socket.emit("bot_typing", false);
-
     } catch (err) {
       console.error("Error sending message:", err);
       socket.emit("receive_message", {
